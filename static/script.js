@@ -364,7 +364,9 @@ async function checkAndReloadData() {
             
             if (!document.body.classList.contains('edit-mode-active')) {
                 const term = document.getElementById('search-input').value.trim();
-                if (term) {
+                if (kanbanActive) {
+                    renderKanbanBoard();
+                } else if (term) {
                     filterTree();
                 } else {
                     renderTree();
@@ -2297,6 +2299,7 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('lightbox') && document.getElementById('lightbox').style.display === 'flex') closeLightbox();
         else if (document.getElementById('sketch-modal') && document.getElementById('sketch-modal').style.display === 'flex') closeSketch();
         else if (document.getElementById('custom-modal') && document.getElementById('custom-modal').style.display === 'flex') document.getElementById('custom-modal').style.display = 'none';
+        else if (document.getElementById('kanban-note-modal') && document.getElementById('kanban-note-modal').style.display === 'flex') { if (document.getElementById('kanban-modal-edit').style.display === 'block') { kanbanCancelEdit(); } else { document.getElementById('kanban-note-modal').style.display = 'none'; } }
         else if (document.getElementById('contact-form-modal') && document.getElementById('contact-form-modal').style.display === 'flex') document.getElementById('contact-form-modal').style.display = 'none';
         else if (document.getElementById('contact-picker-modal') && document.getElementById('contact-picker-modal').style.display === 'flex') document.getElementById('contact-picker-modal').style.display = 'none';
         else if (document.getElementById('contacts-modal') && document.getElementById('contacts-modal').style.display === 'flex') document.getElementById('contacts-modal').style.display = 'none';
@@ -2821,6 +2824,361 @@ function formatRelativeDate(dateStr) {
         if (diffDays <= 7) return 'in ' + diffDays + ' Tagen';
         return targetStart.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
     } catch(e) { return dateStr.replace('T', ' '); }
+}
+
+// --- KANBAN BOARD ---
+var kanbanActive = false;
+var kanbanModalNoteId = null;
+
+function toggleKanbanView() {
+    kanbanActive = !kanbanActive;
+    const board = document.getElementById('kanban-board');
+    const sidebar = document.getElementById('sidebar');
+    const editor = document.getElementById('editor');
+    const mobileBtn = document.getElementById('mobile-toggle-btn');
+    const headerActions = document.querySelector('body > .header-actions');
+
+    if (kanbanActive) {
+        sidebar.style.display = 'none';
+        editor.style.display = 'none';
+        if (mobileBtn) mobileBtn.style.display = 'none';
+        if (headerActions) headerActions.style.display = 'none';
+        board.style.display = 'flex';
+        renderKanbanBoard();
+    } else {
+        board.style.display = 'none';
+        sidebar.style.display = '';
+        editor.style.display = '';
+        if (mobileBtn) mobileBtn.style.display = '';
+        if (headerActions) headerActions.style.display = '';
+        renderTree();
+        if (activeId) {
+            renderDisplayArea();
+        }
+    }
+}
+
+function renderKanbanBoard() {
+    const container = document.getElementById('kanban-columns');
+    container.innerHTML = '';
+
+    if (!fullTree.content || fullTree.content.length === 0) {
+        container.innerHTML = '<div style="padding:40px; opacity:0.5; text-align:center; width:100%;">Keine Notizen vorhanden. Erstelle zuerst Kategorien in der normalen Ansicht.</div>';
+        return;
+    }
+
+    fullTree.content.forEach(rootItem => {
+        const col = document.createElement('div');
+        col.className = 'kanban-column';
+        col.setAttribute('data-id', rootItem.id);
+
+        // Column header
+        const header = document.createElement('div');
+        header.className = 'kanban-column-header';
+        const titleSpan = document.createElement('span');
+        titleSpan.innerText = rootItem.title || 'Unbenannt';
+        titleSpan.style.overflow = 'hidden';
+        titleSpan.style.textOverflow = 'ellipsis';
+        titleSpan.style.whiteSpace = 'nowrap';
+
+        const actions = document.createElement('div');
+        actions.className = 'kanban-col-actions';
+
+        const addBtn = document.createElement('button');
+        addBtn.innerHTML = '<i class="icon icon-add"></i>';
+        addBtn.title = 'Neue Notiz in dieser Spalte';
+        addBtn.onclick = (e) => { e.stopPropagation(); kanbanAddNote(rootItem.id); };
+        actions.appendChild(addBtn);
+
+        header.appendChild(titleSpan);
+        header.appendChild(actions);
+        col.appendChild(header);
+
+        // Cards container
+        const cardsContainer = document.createElement('div');
+        cardsContainer.className = 'kanban-cards';
+        cardsContainer.setAttribute('data-parent-id', rootItem.id);
+
+        // Render the root item itself as a card if it has text
+        if (rootItem.text_preview && rootItem.text_preview.trim()) {
+            cardsContainer.appendChild(createKanbanCard(rootItem, 0));
+        }
+
+        // Render children recursively
+        renderKanbanCards(rootItem.children || [], cardsContainer, 1);
+
+        col.appendChild(cardsContainer);
+
+        // Add button at bottom
+        const addBottom = document.createElement('div');
+        addBottom.className = 'kanban-add-btn';
+        addBottom.innerHTML = '<i class="icon icon-add"></i> Neue Notiz';
+        addBottom.onclick = () => kanbanAddNote(rootItem.id);
+        col.appendChild(addBottom);
+
+        container.appendChild(col);
+
+        // Init SortableJS for this column
+        new Sortable(cardsContainer, {
+            group: 'kanban',
+            animation: 200,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            handle: '.kanban-card',
+            onEnd: (evt) => {
+                kanbanRebuildOrder();
+            }
+        });
+    });
+}
+
+function renderKanbanCards(items, container, depth) {
+    if (!Array.isArray(items)) return;
+    items.forEach(item => {
+        container.appendChild(createKanbanCard(item, depth));
+        if (item.children && item.children.length > 0) {
+            renderKanbanCards(item.children, container, depth + 1);
+        }
+    });
+}
+
+function createKanbanCard(item, depth) {
+    const card = document.createElement('div');
+    card.className = 'kanban-card';
+    card.setAttribute('data-id', item.id);
+    card.setAttribute('data-depth', depth);
+    card.onclick = () => openKanbanModal(item.id);
+
+    // Nesting bar
+    if (depth > 0) {
+        const nestBar = document.createElement('div');
+        nestBar.className = 'kanban-nest-bar';
+        nestBar.style.width = (depth * 4) + 'px';
+        card.appendChild(nestBar);
+        card.style.paddingLeft = (12 + depth * 6) + 'px';
+    }
+
+    // Title
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'kanban-card-title';
+
+    const isFolder = item.children && item.children.length > 0;
+    if (isFolder) {
+        const folderIcon = document.createElement('span');
+        folderIcon.className = 'kanban-card-folder';
+        folderIcon.innerHTML = '<i class="icon icon-folder" style="color:#f39c12;"></i>';
+        titleDiv.appendChild(folderIcon);
+    }
+
+    const titleText = document.createElement('span');
+    titleText.innerText = item.title || 'Unbenannt';
+    titleText.style.overflow = 'hidden';
+    titleText.style.textOverflow = 'ellipsis';
+    titleText.style.whiteSpace = 'nowrap';
+    titleDiv.appendChild(titleText);
+
+    if (item.is_pinned) {
+        const pin = document.createElement('span');
+        pin.className = 'pin-indicator';
+        pin.innerHTML = '<i class="icon icon-pin"></i>';
+        titleDiv.appendChild(pin);
+    }
+
+    card.appendChild(titleDiv);
+
+    // Preview text
+    if (item.text_preview && item.text_preview.trim()) {
+        const preview = document.createElement('div');
+        preview.className = 'kanban-card-preview';
+        let previewText = item.text_preview
+            .replace(/\[img:[^\]]+\]/g, '🖼️ ')
+            .replace(/\[file:[^\]]+\|([^\]]+)\]/g, '📎 $1 ')
+            .replace(/\[audio:[^\]]+\]/g, '🎵 ')
+            .replace(/\[sketch:[^\]]+\]/g, '✏️ ')
+            .replace(/\[contact:[^\]]+\]/g, '👤 ')
+            .replace(/\[note:[^\]]+\|([^\]]+)\]/g, '🔗 $1 ')
+            .replace(/\[s=[^\]]+\][\s\S]*?\[\/s\]/g, '')
+            .replace(/\*\*|__|~~|'''|`/g, '')
+            .replace(/^#+\s/gm, '')
+            .replace(/^- \[[ xX]\] /gm, '☐ ')
+            .replace(/^- /gm, '• ')
+            .replace(/\n/g, ' ')
+            .trim();
+        preview.innerText = previewText.substring(0, 200);
+        card.appendChild(preview);
+    }
+
+    // Reminder
+    if (isReminderActive(item)) {
+        const rem = document.createElement('div');
+        rem.className = 'kanban-card-reminder';
+        rem.innerHTML = '<i class="icon icon-reminder_active"></i> Überfällig';
+        card.appendChild(rem);
+    } else if (item.reminder) {
+        const rem = document.createElement('div');
+        rem.className = 'kanban-card-reminder';
+        rem.style.color = 'var(--accent)';
+        rem.innerHTML = '<i class="icon icon-reminders"></i> ' + formatRelativeDate(item.reminder);
+        card.appendChild(rem);
+    }
+
+    // Tags
+    if (item.tags && item.tags.length > 0) {
+        const tagsDiv = document.createElement('div');
+        tagsDiv.className = 'kanban-card-tags';
+        item.tags.forEach(t => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.style.background = t.color;
+            chip.style.fontSize = '0.65em';
+            chip.style.padding = '1px 6px';
+            chip.innerText = t.name;
+            tagsDiv.appendChild(chip);
+        });
+        card.appendChild(tagsDiv);
+    }
+
+    return card;
+}
+
+async function openKanbanModal(noteId) {
+    kanbanModalNoteId = noteId;
+    const noteData = await fetchNoteData(noteId);
+    if (!noteData) return;
+
+    document.getElementById('kanban-modal-title').innerText = noteData.title || 'Unbenannt';
+    document.getElementById('kanban-modal-view').innerHTML = renderMarkdown(noteData.text);
+    document.getElementById('kanban-modal-view').style.display = 'block';
+    document.getElementById('kanban-modal-edit').style.display = 'none';
+
+    if (window.hljs) {
+        document.getElementById('kanban-modal-view').querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+    }
+
+    // Tags
+    const tagsEl = document.getElementById('kanban-modal-tags');
+    const node = findNode(fullTree.content, noteId);
+    if (node && node.tags && node.tags.length > 0) {
+        tagsEl.innerHTML = '';
+        node.tags.forEach(t => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.style.background = t.color;
+            chip.innerText = t.name;
+            tagsEl.appendChild(chip);
+        });
+        tagsEl.style.display = 'flex';
+    } else {
+        tagsEl.style.display = 'none';
+    }
+
+    // Pin icon
+    const pinIcon = document.getElementById('kanban-pin-icon');
+    if (node && node.is_pinned) {
+        pinIcon.className = 'icon icon-pin-off';
+    } else {
+        pinIcon.className = 'icon icon-pin';
+    }
+
+    document.getElementById('kanban-note-modal').style.display = 'flex';
+}
+
+async function kanbanEditNote() {
+    if (!kanbanModalNoteId) return;
+
+    const locked = await acquireLock(kanbanModalNoteId);
+    if (!locked) {
+        showModal("Gesperrt", "Diese Notiz wird gerade bearbeitet.", [{ label: "OK", class: "btn-cancel", action: () => { document.getElementById('kanban-note-modal').style.display = 'flex'; } }]);
+        document.getElementById('kanban-note-modal').style.display = 'none';
+        return;
+    }
+
+    const noteData = await fetchNoteData(kanbanModalNoteId);
+    if (!noteData) { releaseLock(); return; }
+
+    document.getElementById('kanban-edit-title').value = noteData.title || '';
+    document.getElementById('kanban-edit-text').value = noteData.text || '';
+    document.getElementById('kanban-modal-view').style.display = 'none';
+    document.getElementById('kanban-modal-edit').style.display = 'block';
+}
+
+async function kanbanSaveNote() {
+    if (!kanbanModalNoteId) return;
+    const noteData = await fetchNoteData(kanbanModalNoteId);
+    if (!noteData) return;
+
+    noteData.title = document.getElementById('kanban-edit-title').value;
+    noteData.text = document.getElementById('kanban-edit-text').value;
+    noteData.client_id = myClientId;
+
+    try {
+        const res = await fetch(`/api/notes/${kanbanModalNoteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(noteData)
+        });
+        if (res.status === 403) {
+            showModal("Gesperrt", "Speichern fehlgeschlagen.", [{ label: "OK", class: "btn-cancel", action: () => {} }]);
+        }
+    } catch(e) { console.error(e); }
+
+    await releaseLock();
+    await checkAndReloadData();
+    document.getElementById('kanban-note-modal').style.display = 'none';
+    renderKanbanBoard();
+}
+
+function kanbanCancelEdit() {
+    releaseLock();
+    document.getElementById('kanban-modal-view').style.display = 'block';
+    document.getElementById('kanban-modal-edit').style.display = 'none';
+}
+
+async function kanbanTogglePin() {
+    if (!kanbanModalNoteId) return;
+    await fetch(`/api/notes/${kanbanModalNoteId}/pin`, { method: 'POST' });
+    await checkAndReloadData();
+    openKanbanModal(kanbanModalNoteId);
+    renderKanbanBoard();
+}
+
+async function kanbanAddNote(parentId) {
+    const newId = Date.now().toString() + Math.random().toString(36).substring(2, 6);
+    const payload = { id: newId, parent_id: parentId, title: 'Neu', text: '' };
+    await fetch('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    await checkAndReloadData();
+    renderKanbanBoard();
+    openKanbanModal(newId);
+    kanbanEditNote();
+}
+
+async function kanbanRebuildOrder() {
+    const columns = document.querySelectorAll('.kanban-cards');
+    let flatUpdates = [];
+
+    columns.forEach(col => {
+        const parentId = col.getAttribute('data-parent-id');
+        const cards = col.querySelectorAll(':scope > .kanban-card');
+        cards.forEach((card, index) => {
+            const id = card.getAttribute('data-id');
+            const depth = parseInt(card.getAttribute('data-depth') || '0');
+            if (depth <= 1) {
+                flatUpdates.push({ id: id, parent_id: parentId, sort_order: index });
+            }
+        });
+    });
+
+    if (flatUpdates.length > 0) {
+        try {
+            await fetch('/api/tree', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(flatUpdates)
+            });
+            await checkAndReloadData();
+            renderKanbanBoard();
+        } catch(e) { console.error(e); }
+    }
 }
 
 window.addEventListener('popstate', function(e) {
