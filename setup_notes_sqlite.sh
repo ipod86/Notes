@@ -49,17 +49,24 @@ write_app_code() {
     mkdir -p "$TARGET_DIR/backups"
 
     apt-get install -y unzip wget > /dev/null 2>&1
-    wget -qO /tmp/notizen-static.zip https://github.com/ipod86/Notizen/archive/refs/heads/main.zip
+    wget -qO /tmp/notizen-static.zip https://github.com/ipod86/Notes/archive/refs/heads/main.zip
     unzip -qo /tmp/notizen-static.zip -d /tmp/notizen-extract
 
+    # Prüfen ob Download erfolgreich war
+    if [ ! -d "/tmp/notizen-extract/Notes-main" ]; then
+        echo "❌ FEHLER: Download von GitHub fehlgeschlagen!"
+        rm -rf /tmp/notizen-static.zip /tmp/notizen-extract
+        exit 1
+    fi
+
     # 1. Inhalt von 'app' direkt ins Hauptverzeichnis
-    cp -r /tmp/notizen-extract/Notizen-main/app/. "$TARGET_DIR/" 2>/dev/null || true
+    cp -r /tmp/notizen-extract/Notes-main/app/. "$TARGET_DIR/"
 
     # 2. Den GESAMTEN Inhalt von 'static' (Ordner + Dateien) kopieren
-    cp -r /tmp/notizen-extract/Notizen-main/static/. "$TARGET_DIR/static/" 2>/dev/null || true
+    cp -r /tmp/notizen-extract/Notes-main/static/. "$TARGET_DIR/static/"
 
     # 3. Den Inhalt von 'templates' kopieren
-    cp -r /tmp/notizen-extract/Notizen-main/templates/. "$TARGET_DIR/templates/" 2>/dev/null || true
+    cp -r /tmp/notizen-extract/Notes-main/templates/. "$TARGET_DIR/templates/"
 
     # Cleanup
     rm -rf /tmp/notizen-static.zip /tmp/notizen-extract
