@@ -1105,8 +1105,8 @@ def restore_backup():
                 os.makedirs(UPLOAD_FOLDER)
 
         def restart_app():
-            time.sleep(1.5)
-            os._exit(0)
+            time.sleep(1.0)
+            init_db()
         threading.Thread(target=restart_app, daemon=True).start()
         return jsonify({"status": "success"})
         
