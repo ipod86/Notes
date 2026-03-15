@@ -165,7 +165,7 @@ if [ "$ACTION" == "1" ]; then
     chmod +x "$INSTALL_DIR/app.py"
 
     if [[ "$USE_GUNICORN" =~ ^[Yy]$ ]]; then
-        EXEC_START="$INSTALL_DIR/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:\$FLASK_PORT --chdir $INSTALL_DIR app:app"
+        EXEC_START="$INSTALL_DIR/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:$USER_PORT --chdir $INSTALL_DIR app:app"
     else
         EXEC_START="$INSTALL_DIR/venv/bin/python $INSTALL_DIR/app.py"
     fi
@@ -305,4 +305,3 @@ else
     echo "Ungültige Eingabe. Skript wird beendet."
     exit 1
 fi
-
