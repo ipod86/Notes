@@ -3070,7 +3070,6 @@ async function openKanbanModal(noteId) {
     document.getElementById('kanban-modal-title').innerText = noteData.title || 'Unbenannt';
     document.getElementById('kanban-modal-view').innerHTML = renderMarkdown(noteData.text);
     document.getElementById('kanban-modal-view').style.display = 'block';
-    document.getElementById('kanban-modal-edit').style.display = 'none';
 
     if (window.hljs) {
         document.getElementById('kanban-modal-view').querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
