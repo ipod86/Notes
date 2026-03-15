@@ -554,16 +554,17 @@
                 <button onclick="toggleKanbanView()" title="Zurück zur Listenansicht" style="font-size:1.2em;"><i class="icon icon-kanban" style="transform:rotate(90deg);"></i></button>
                 <h3 style="margin:0;">Kanban Board</h3>
             </div>
-            <div class="header-actions" style="display:flex; gap:15px; align-items:center;">
-                <div style="position:relative; cursor:pointer; font-size:1.4em;" onclick="openTodoModal()" title="Meine Aufgaben">
-                    <i class="icon icon-tasks"></i>
-                </div>
-                <div class="dropdown">
-                    <button onclick="toggleSettings(event)" style="font-size:1.4em"><i class="icon icon-settings"></i></button>
-                </div>
-            </div>
         </div>
         <div id="kanban-columns"></div>
+    </div>
+
+    <div id="kanban-context-menu" style="display:none; position:fixed; z-index:3000; background:var(--sidebar-bg); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.3); min-width:200px; padding:5px 0;">
+        <div class="menu-row" onclick="kanbanCtxAction('edit')"><span><i class="icon icon-sketch" style="margin-right:8px;"></i> Bearbeiten</span></div>
+        <div class="menu-row" onclick="kanbanCtxAction('pin')"><span id="kanban-ctx-pin-text"><i class="icon icon-pin" style="margin-right:8px;"></i> Anpinnen</span></div>
+        <div class="menu-row" onclick="kanbanCtxAction('tags')"><span><i class="icon icon-tag" style="margin-right:8px;"></i> Tags bearbeiten</span></div>
+        <div class="menu-row" onclick="kanbanCtxAction('duplicate')"><span><i class="icon icon-add" style="margin-right:8px;"></i> Notiz duplizieren</span></div>
+        <div class="menu-row" onclick="kanbanCtxAction('share')"><span><i class="icon icon-share" style="margin-right:8px;"></i> Freigabe-Link</span></div>
+        <div class="menu-row" onclick="kanbanCtxAction('delete')" style="color:#e74c3c;"><span><i class="icon icon-trash" style="margin-right:8px;"></i> Notiz löschen</span></div>
     </div>
 
     <div id="kanban-note-modal" class="modal-overlay">
@@ -577,15 +578,7 @@
                 </div>
             </div>
             <div id="kanban-modal-tags" style="display:none; flex-wrap:wrap; gap:4px; margin-bottom:10px; flex-shrink:0;"></div>
-            <div id="kanban-modal-view" style="overflow-y:auto; flex-grow:1;"></div>
-            <div id="kanban-modal-edit" style="display:none; overflow-y:auto; flex-grow:1;">
-                <input type="text" id="kanban-edit-title" placeholder="Titel..." style="margin-bottom:10px;">
-                <textarea id="kanban-edit-text" placeholder="Text..." style="height:50vh;"></textarea>
-                <div style="display:flex; gap:10px; margin-top:10px;">
-                    <button class="btn-save" onclick="kanbanSaveNote()">Speichern</button>
-                    <button class="btn-cancel" onclick="kanbanCancelEdit()">Abbruch</button>
-                </div>
-            </div>
+            <div id="kanban-modal-view" style="overflow-y:auto; flex-grow:1; text-align:left;"></div>
         </div>
     </div>
 
