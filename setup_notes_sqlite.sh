@@ -161,11 +161,12 @@ if [ "$ACTION" == "1" ]; then
 
     chown -R notizen:notizen "$INSTALL_DIR"
     find "$INSTALL_DIR" -type d -exec chmod 750 {} \;
-    find "$INSTALL_DIR" -type f -exec chmod 640 {} \;
+    find "$INSTALL_DIR" -type f -not -path "*/venv/*" -exec chmod 640 {} \;
     chmod +x "$INSTALL_DIR/app.py"
+    chmod +x "$INSTALL_DIR/venv/bin/"* 2>/dev/null
 
     if [[ "$USE_GUNICORN" =~ ^[Yy]$ ]]; then
-        EXEC_START="$INSTALL_DIR/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:\$FLASK_PORT --chdir $INSTALL_DIR app:app"
+        EXEC_START="$INSTALL_DIR/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:$USER_PORT --chdir $INSTALL_DIR app:app"
     else
         EXEC_START="$INSTALL_DIR/venv/bin/python $INSTALL_DIR/app.py"
     fi
@@ -230,6 +231,7 @@ elif [ "$ACTION" == "2" ]; then
         chown -R notizen:notizen "$DIR"
         chmod +x "$DIR/app.py"
         chmod +x "$DIR/backup.sh"
+        chmod +x "$DIR/venv/bin/"* 2>/dev/null
 
         systemctl start "$SERVICE_NAME"
         echo "Fertig: $INSTANCE_NAME aktualisiert und neugestartet."
@@ -305,4 +307,3 @@ else
     echo "Ungültige Eingabe. Skript wird beendet."
     exit 1
 fi
-
