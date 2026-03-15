@@ -1011,6 +1011,24 @@ input[type="checkbox"].task-check { width: 16px; height: 16px; margin: 0; cursor
     color: #e74c3c;
     margin-top: 4px;
 }
+.kanban-card-menu-btn {
+    font-weight: bold;
+    font-size: 1.1em;
+    letter-spacing: 1px;
+    opacity: 0.3;
+    cursor: pointer;
+    padding: 0 4px;
+    flex-shrink: 0;
+    transition: opacity 0.2s;
+    line-height: 1;
+}
+.kanban-card:hover .kanban-card-menu-btn {
+    opacity: 0.7;
+}
+.kanban-card-menu-btn:hover {
+    opacity: 1 !important;
+    color: var(--accent);
+}
 .kanban-nest-bar {
     position: absolute;
     left: 0;
