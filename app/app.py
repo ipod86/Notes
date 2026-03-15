@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 import json
-import os
+import os, signal
 import uuid
 import tarfile
 import io
@@ -1105,8 +1105,14 @@ def restore_backup():
                 os.makedirs(UPLOAD_FOLDER)
 
         def restart_app():
-            time.sleep(1.0)
-            init_db()
+            time.sleep(1.5)
+            # Kill Gunicorn master (ppid) or Flask process - systemd Restart=always brings it back
+            try:
+                os.kill(os.getppid(), signal.SIGTERM)
+            except:
+                pass
+            time.sleep(0.5)
+            os._exit(0)
         threading.Thread(target=restart_app, daemon=True).start()
         return jsonify({"status": "success"})
         
