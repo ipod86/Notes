@@ -12,11 +12,11 @@ Egal ob du aus Versehen ein Skript in ioBroker gelöscht hast oder dein System z
 * **Unterstützt alle Skript-Typen:** JavaScript, TypeScript, Blockly (inklusive XML-Generierung für den Re-Import) und Rules.
 * **Anpassbares UI:** Mit dem integrierten Resizer kannst du die Breite der Seitenleiste (oder die Höhe auf Mobilgeräten) individuell anpassen.
 * **Einfacher Export:** Skripte können mit einem Klick in die Zwischenablage kopiert oder direkt als fertige Datei (`.js`, `.ts`, `.xml`, `.json`) heruntergeladen werden.
-* **Management:** Das Setup-Skript übernimmt Installation und Updates und kann das Tool als Hintergrunddienst (systemd) einrichten.
+* **Management:** Das Setup-Skript installiert das Tool, übernimmt Updates und kann es wahlweise als Hintergrunddienst (systemd) einrichten.
 
 ## 🚀 Installation & Update
 
 Kopiere den folgenden Befehl in die Konsole deines Linux-Systems (z. B. Raspberry Pi oder dein ioBroker-Server):
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/ipod86/Iobroker-Script-Restore/main/script_restore.sh](https://raw.githubusercontent.com/ipod86/Iobroker-Script-Restore/main/script_restore.sh) -o script_restore.sh && chmod +x script_restore.sh && ./script_restore.sh
+curl -sSL [https://raw.githubusercontent.com/ipod86/IoBroker_Script_Restore/main/script_restore.sh](https://raw.githubusercontent.com/ipod86/IoBroker_Script_Restore/main/script_restore.sh) -o script_restore.sh && chmod +x script_restore.sh && ./script_restore.sh
