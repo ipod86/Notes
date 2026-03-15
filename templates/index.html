@@ -108,17 +108,18 @@
                 <input type="text" id="search-input" placeholder="Titel oder Text suchen..." oninput="filterTree()">
                 <span id="clear-search" onclick="clearSearch()"><i class="icon icon-clear"></i></span>
             </div>
-            <div id="tag-filter-bar" style="display:none; margin-bottom:10px; gap:4px; flex-wrap:nowrap; overflow:hidden; padding:2px 0;"></div>
             <div style="display:flex; gap:5px;">
                 <button onclick="addItem(null)" style="flex:1;background:var(--accent) !important;color:white;padding:8px;border-radius:4px;font-weight:bold;"><i class="icon icon-add"></i> Hauptkategorie</button>
                 <button onclick="addItemFromTemplate(null)" style="background:rgba(var(--accent-rgb),0.15) !important;color:var(--accent);padding:8px;border-radius:4px;font-weight:bold;" title="Aus Vorlage erstellen"><i class="icon icon-file"></i></button>
+                <button id="tag-toggle-btn" onclick="toggleTagBar()" style="display:none; background:rgba(var(--accent-rgb),0.15) !important;color:var(--accent);padding:8px;border-radius:4px;font-weight:bold;" title="Tags ein-/ausblenden"><i class="icon icon-tag"></i></button>
             </div>
+            <div id="tag-filter-bar" style="display:none; margin-top:8px; gap:4px; flex-wrap:wrap; padding:2px 0;"></div>
         </div>
         <div id="tree"></div>
     </div>
     
     <div id="editor">
-        <div id="no-selection">
+        <div id="no-selection" style="display:none;">
             <div id="dashboard" style="max-width:800px; margin:20px auto;"></div>
         </div>
         <div id="edit-area" style="display:none">
