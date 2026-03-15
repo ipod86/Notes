@@ -338,7 +338,7 @@ def index():
 @app.route('/api/tree', methods=['GET'])
 def get_tree():
     with get_db() as conn:
-        rows = conn.execute("SELECT id, parent_id, sort_order, title, reminder, is_pinned FROM notes WHERE is_trashed=0 ORDER BY sort_order").fetchall()
+        rows = conn.execute("SELECT id, parent_id, sort_order, title, reminder, is_pinned, SUBSTR(text, 1, 300) as text_preview FROM notes WHERE is_trashed=0 ORDER BY sort_order").fetchall()
         sets = get_settings()
 
         tag_rows = conn.execute("SELECT nt.note_id, t.id as tag_id, t.name, t.color FROM note_tags nt JOIN tags t ON nt.tag_id = t.id").fetchall()
