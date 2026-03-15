@@ -2891,9 +2891,19 @@ function renderKanbanBoard() {
         titleSpan.style.overflow = 'hidden';
         titleSpan.style.textOverflow = 'ellipsis';
         titleSpan.style.whiteSpace = 'nowrap';
+        titleSpan.style.cursor = 'pointer';
+        titleSpan.onclick = () => openKanbanModal(rootItem.id);
 
         const actions = document.createElement('div');
         actions.className = 'kanban-col-actions';
+
+        const menuBtn = document.createElement('button');
+        menuBtn.innerHTML = '⋮';
+        menuBtn.title = 'Optionen';
+        menuBtn.style.fontWeight = 'bold';
+        menuBtn.style.letterSpacing = '1px';
+        menuBtn.onclick = (e) => { e.stopPropagation(); openKanbanContextMenu(e, rootItem.id); };
+        actions.appendChild(menuBtn);
 
         const addBtn = document.createElement('button');
         addBtn.innerHTML = '<i class="icon icon-add"></i>';
@@ -2910,13 +2920,8 @@ function renderKanbanBoard() {
         cardsContainer.className = 'kanban-cards';
         cardsContainer.setAttribute('data-parent-id', rootItem.id);
 
-        // Render the root item itself as a card if it has text
-        if (rootItem.text_preview && rootItem.text_preview.trim()) {
-            cardsContainer.appendChild(createKanbanCard(rootItem, 0));
-        }
-
-        // Render children recursively
-        renderKanbanCards(rootItem.children || [], cardsContainer, 1);
+        // Render children recursively (root item itself is the column header, not a card)
+        renderKanbanCards(rootItem.children || [], cardsContainer, 0);
 
         col.appendChild(cardsContainer);
 
@@ -2935,7 +2940,9 @@ function renderKanbanBoard() {
             animation: 200,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
-            handle: '.kanban-card',
+            delay: 150,
+            delayOnTouchOnly: true,
+            touchStartThreshold: 5,
             onEnd: (evt) => {
                 kanbanRebuildOrder();
             }
@@ -3154,7 +3161,7 @@ async function kanbanRebuildOrder() {
         cards.forEach((card, index) => {
             const id = card.getAttribute('data-id');
             const depth = parseInt(card.getAttribute('data-depth') || '0');
-            if (depth <= 1) {
+            if (depth === 0) {
                 flatUpdates.push({ id: id, parent_id: parentId, sort_order: index });
             }
         });
