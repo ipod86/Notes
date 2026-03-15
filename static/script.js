@@ -579,12 +579,24 @@ async function saveChanges() {
     
     await releaseLock();
     await checkAndReloadData(); 
-    renderDisplayArea();
+    
+    if (editOrigin === 'kanban') {
+        editOrigin = null;
+        toggleKanbanView();
+    } else {
+        renderDisplayArea();
+    }
 }
 
 function cancelEdit() { 
-    releaseLock(); 
-    renderDisplayArea(); 
+    releaseLock();
+    
+    if (editOrigin === 'kanban') {
+        editOrigin = null;
+        toggleKanbanView();
+    } else {
+        renderDisplayArea(); 
+    }
 }
 
 function getContactById(id) {
@@ -2299,7 +2311,7 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('lightbox') && document.getElementById('lightbox').style.display === 'flex') closeLightbox();
         else if (document.getElementById('sketch-modal') && document.getElementById('sketch-modal').style.display === 'flex') closeSketch();
         else if (document.getElementById('custom-modal') && document.getElementById('custom-modal').style.display === 'flex') document.getElementById('custom-modal').style.display = 'none';
-        else if (document.getElementById('kanban-note-modal') && document.getElementById('kanban-note-modal').style.display === 'flex') { if (document.getElementById('kanban-modal-edit').style.display === 'block') { kanbanCancelEdit(); } else { document.getElementById('kanban-note-modal').style.display = 'none'; } }
+        else if (document.getElementById('kanban-note-modal') && document.getElementById('kanban-note-modal').style.display === 'flex') { document.getElementById('kanban-note-modal').style.display = 'none'; }
         else if (document.getElementById('contact-form-modal') && document.getElementById('contact-form-modal').style.display === 'flex') document.getElementById('contact-form-modal').style.display = 'none';
         else if (document.getElementById('contact-picker-modal') && document.getElementById('contact-picker-modal').style.display === 'flex') document.getElementById('contact-picker-modal').style.display = 'none';
         else if (document.getElementById('contacts-modal') && document.getElementById('contacts-modal').style.display === 'flex') document.getElementById('contacts-modal').style.display = 'none';
@@ -2829,6 +2841,8 @@ function formatRelativeDate(dateStr) {
 // --- KANBAN BOARD ---
 var kanbanActive = false;
 var kanbanModalNoteId = null;
+var kanbanCtxNoteId = null;
+var editOrigin = null; // 'kanban' or null
 
 function toggleKanbanView() {
     kanbanActive = !kanbanActive;
@@ -2836,13 +2850,11 @@ function toggleKanbanView() {
     const sidebar = document.getElementById('sidebar');
     const editor = document.getElementById('editor');
     const mobileBtn = document.getElementById('mobile-toggle-btn');
-    const headerActions = document.querySelector('body > .header-actions');
 
     if (kanbanActive) {
         sidebar.style.display = 'none';
         editor.style.display = 'none';
         if (mobileBtn) mobileBtn.style.display = 'none';
-        if (headerActions) headerActions.style.display = 'none';
         board.style.display = 'flex';
         renderKanbanBoard();
     } else {
@@ -2850,7 +2862,6 @@ function toggleKanbanView() {
         sidebar.style.display = '';
         editor.style.display = '';
         if (mobileBtn) mobileBtn.style.display = '';
-        if (headerActions) headerActions.style.display = '';
         renderTree();
         if (activeId) {
             renderDisplayArea();
@@ -2984,6 +2995,16 @@ function createKanbanCard(item, depth) {
         titleDiv.appendChild(pin);
     }
 
+    const spacer = document.createElement('span');
+    spacer.style.flexGrow = '1';
+    titleDiv.appendChild(spacer);
+
+    const menuBtn = document.createElement('span');
+    menuBtn.className = 'kanban-card-menu-btn';
+    menuBtn.innerHTML = '⋮';
+    menuBtn.onclick = (e) => { e.stopPropagation(); openKanbanContextMenu(e, item.id); };
+    titleDiv.appendChild(menuBtn);
+
     card.appendChild(titleDiv);
 
     // Preview text
@@ -3085,53 +3106,25 @@ async function openKanbanModal(noteId) {
 
 async function kanbanEditNote() {
     if (!kanbanModalNoteId) return;
-
-    const locked = await acquireLock(kanbanModalNoteId);
-    if (!locked) {
-        showModal("Gesperrt", "Diese Notiz wird gerade bearbeitet.", [{ label: "OK", class: "btn-cancel", action: () => { document.getElementById('kanban-note-modal').style.display = 'flex'; } }]);
-        document.getElementById('kanban-note-modal').style.display = 'none';
-        return;
-    }
-
-    const noteData = await fetchNoteData(kanbanModalNoteId);
-    if (!noteData) { releaseLock(); return; }
-
-    document.getElementById('kanban-edit-title').value = noteData.title || '';
-    document.getElementById('kanban-edit-text').value = noteData.text || '';
-    document.getElementById('kanban-modal-view').style.display = 'none';
-    document.getElementById('kanban-modal-edit').style.display = 'block';
-}
-
-async function kanbanSaveNote() {
-    if (!kanbanModalNoteId) return;
-    const noteData = await fetchNoteData(kanbanModalNoteId);
-    if (!noteData) return;
-
-    noteData.title = document.getElementById('kanban-edit-title').value;
-    noteData.text = document.getElementById('kanban-edit-text').value;
-    noteData.client_id = myClientId;
-
-    try {
-        const res = await fetch(`/api/notes/${kanbanModalNoteId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(noteData)
-        });
-        if (res.status === 403) {
-            showModal("Gesperrt", "Speichern fehlgeschlagen.", [{ label: "OK", class: "btn-cancel", action: () => {} }]);
-        }
-    } catch(e) { console.error(e); }
-
-    await releaseLock();
-    await checkAndReloadData();
     document.getElementById('kanban-note-modal').style.display = 'none';
-    renderKanbanBoard();
-}
-
-function kanbanCancelEdit() {
-    releaseLock();
-    document.getElementById('kanban-modal-view').style.display = 'block';
-    document.getElementById('kanban-modal-edit').style.display = 'none';
+    
+    editOrigin = 'kanban';
+    activeId = kanbanModalNoteId;
+    activeNoteData = await fetchNoteData(kanbanModalNoteId);
+    if (!activeNoteData) return;
+    
+    kanbanActive = false;
+    document.getElementById('kanban-board').style.display = 'none';
+    document.getElementById('sidebar').style.display = '';
+    document.getElementById('editor').style.display = '';
+    const mBtn = document.getElementById('mobile-toggle-btn');
+    if (mBtn) mBtn.style.display = '';
+    
+    document.getElementById('no-selection').style.display = 'none';
+    document.getElementById('edit-area').style.display = 'block';
+    localStorage.setItem('lastActiveId', kanbanModalNoteId);
+    renderDisplayArea();
+    enableEdit();
 }
 
 async function kanbanTogglePin() {
@@ -3148,7 +3141,7 @@ async function kanbanAddNote(parentId) {
     await fetch('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     await checkAndReloadData();
     renderKanbanBoard();
-    openKanbanModal(newId);
+    kanbanModalNoteId = newId;
     kanbanEditNote();
 }
 
@@ -3178,6 +3171,102 @@ async function kanbanRebuildOrder() {
             await checkAndReloadData();
             renderKanbanBoard();
         } catch(e) { console.error(e); }
+    }
+}
+
+// --- KANBAN CONTEXT MENU ---
+function openKanbanContextMenu(e, noteId) {
+    kanbanCtxNoteId = noteId;
+    const menu = document.getElementById('kanban-context-menu');
+    
+    const node = findNode(fullTree.content, noteId);
+    const pinText = document.getElementById('kanban-ctx-pin-text');
+    if (pinText) {
+        pinText.innerHTML = (node && node.is_pinned) 
+            ? '<i class="icon icon-pin-off" style="margin-right:8px;"></i> Anpinnung aufheben'
+            : '<i class="icon icon-pin" style="margin-right:8px;"></i> Anpinnen';
+    }
+    
+    menu.style.display = 'block';
+    const rect = e.target.getBoundingClientRect();
+    let top = rect.bottom + 5;
+    let left = rect.left - 160;
+    if (left < 10) left = 10;
+    if (top + 250 > window.innerHeight) top = rect.top - 250;
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+    
+    setTimeout(() => {
+        document.addEventListener('click', closeKanbanContextMenu, { once: true });
+    }, 10);
+}
+
+function closeKanbanContextMenu() {
+    document.getElementById('kanban-context-menu').style.display = 'none';
+}
+
+async function kanbanCtxAction(action) {
+    closeKanbanContextMenu();
+    if (!kanbanCtxNoteId) return;
+    const noteId = kanbanCtxNoteId;
+    
+    switch (action) {
+        case 'edit':
+            editOrigin = 'kanban';
+            activeId = noteId;
+            activeNoteData = await fetchNoteData(noteId);
+            if (!activeNoteData) return;
+            
+            kanbanActive = false;
+            document.getElementById('kanban-board').style.display = 'none';
+            document.getElementById('sidebar').style.display = '';
+            document.getElementById('editor').style.display = '';
+            const mBtn = document.getElementById('mobile-toggle-btn');
+            if (mBtn) mBtn.style.display = '';
+            
+            document.getElementById('no-selection').style.display = 'none';
+            document.getElementById('edit-area').style.display = 'block';
+            localStorage.setItem('lastActiveId', noteId);
+            renderDisplayArea();
+            enableEdit();
+            break;
+            
+        case 'pin':
+            await fetch(`/api/notes/${noteId}/pin`, { method: 'POST' });
+            await checkAndReloadData();
+            renderKanbanBoard();
+            break;
+            
+        case 'tags':
+            activeId = noteId;
+            openNoteTagsModal();
+            break;
+            
+        case 'duplicate':
+            const res = await fetch(`/api/notes/${noteId}/duplicate`, { method: 'POST' });
+            const data = await res.json();
+            if (data.id) {
+                await checkAndReloadData();
+                renderKanbanBoard();
+            }
+            break;
+            
+        case 'share':
+            activeId = noteId;
+            shareNote();
+            break;
+            
+        case 'delete':
+            activeId = noteId;
+            showModal("Notiz löschen", "Möchtest du diese Notiz wirklich in den Papierkorb verschieben?", [
+                { label: "Ja, in den Papierkorb", class: "btn-discard", action: async () => {
+                    await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
+                    await checkAndReloadData();
+                    renderKanbanBoard();
+                }},
+                { label: "Abbruch", class: "btn-cancel", action: () => {} }
+            ]);
+            break;
     }
 }
 
