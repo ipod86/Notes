@@ -388,6 +388,11 @@ async function checkAndReloadData() {
                 }
             }
         }
+
+        const noSel = document.getElementById('no-selection');
+        if (noSel && noSel.style.display !== 'none') {
+            loadDashboard();
+        }
     } catch (e) { 
         console.error("Sync error:", e); 
     }
@@ -431,19 +436,26 @@ async function loadData() {
     renderTree(); 
     updateToggleAllIcon();
     
+    let noteLoaded = false;
     const hash = window.location.hash;
     const hashMatch = hash.match(/^#note=(.+)$/);
     if (hashMatch && findNode(fullTree.content, hashMatch[1])) {
         history.replaceState({ noteId: hashMatch[1] }, '', hash);
-        doSelectNode(hashMatch[1], true);
+        await doSelectNode(hashMatch[1], true);
+        noteLoaded = true;
     } else {
         const lastId = localStorage.getItem('lastActiveId'); 
         if (lastId && findNode(fullTree.content, lastId)) {
             history.replaceState({ noteId: lastId }, '', '#note=' + lastId);
-            doSelectNode(lastId, true);
-        } else {
-            history.replaceState({ noteId: null }, '', '#');
+            await doSelectNode(lastId, true);
+            noteLoaded = true;
         }
+    }
+    
+    if (!noteLoaded) {
+        history.replaceState({ noteId: null }, '', '#');
+        document.getElementById('no-selection').style.display = 'block';
+        loadDashboard();
     }
 }
 
@@ -2360,7 +2372,7 @@ async function duplicateNote() {
 // --- TAGS ---
 var allTagsCache = [];
 var activeTagFilters = new Set();
-var tagFilterExpanded = false;
+var tagBarVisible = false;
 
 async function loadAllTags() {
     try {
@@ -2369,74 +2381,45 @@ async function loadAllTags() {
     } catch(e) { console.error(e); }
 }
 
+function toggleTagBar() {
+    tagBarVisible = !tagBarVisible;
+    renderTagFilterBar();
+}
+
 function renderTagFilterBar() {
     const bar = document.getElementById('tag-filter-bar');
+    const toggleBtn = document.getElementById('tag-toggle-btn');
     if (!bar) return;
 
-    if (allTagsCache.length === 0) {
+    // Show/hide toggle button based on whether tags exist
+    if (toggleBtn) {
+        toggleBtn.style.display = allTagsCache.length > 0 ? '' : 'none';
+        if (activeTagFilters.size > 0) {
+            toggleBtn.style.background = 'var(--accent)';
+            toggleBtn.style.color = 'white';
+        } else {
+            toggleBtn.style.background = 'rgba(var(--accent-rgb),0.15)';
+            toggleBtn.style.color = 'var(--accent)';
+        }
+    }
+
+    if (allTagsCache.length === 0 || !tagBarVisible) {
         bar.style.display = 'none';
-        if (activeTagFilters.size > 0) { activeTagFilters.clear(); renderTree(); }
+        if (allTagsCache.length === 0 && activeTagFilters.size > 0) {
+            activeTagFilters.clear();
+            renderTree();
+        }
         return;
     }
+
     bar.style.display = 'flex';
     bar.innerHTML = '';
 
-    if (tagFilterExpanded) {
-        bar.style.flexWrap = 'wrap';
-        allTagsCache.forEach(t => {
-            bar.appendChild(makeTagChip(t));
-        });
-        const lessBtn = document.createElement('span');
-        lessBtn.className = 'tag-filter-expand';
-        lessBtn.innerText = '▴';
-        lessBtn.title = 'Weniger anzeigen';
-        lessBtn.onclick = () => { tagFilterExpanded = false; renderTagFilterBar(); };
-        bar.appendChild(lessBtn);
-        if (activeTagFilters.size > 0) bar.appendChild(makeTagClearBtn());
-        return;
-    }
-
-    // Render all chips to measure
-    bar.style.flexWrap = 'nowrap';
-    const chips = allTagsCache.map(t => makeTagChip(t));
-    chips.forEach(c => bar.appendChild(c));
-    if (activeTagFilters.size > 0) bar.appendChild(makeTagClearBtn());
-
-    // Wait a frame so the browser lays them out, then measure
-    requestAnimationFrame(() => {
-        if (!bar.offsetWidth) return;
-        const barWidth = bar.clientWidth;
-        const gap = 4;
-        const reserveForMore = 40;
-        const reserveForClear = activeTagFilters.size > 0 ? 30 : 0;
-        const maxWidth = barWidth - reserveForMore - reserveForClear;
-
-        let usedWidth = 0;
-        let fitCount = 0;
-
-        for (let i = 0; i < chips.length; i++) {
-            const w = chips[i].offsetWidth + gap;
-            if (usedWidth + w <= maxWidth || i === 0) {
-                usedWidth += w;
-                fitCount++;
-            } else {
-                break;
-            }
-        }
-
-        if (fitCount >= allTagsCache.length) return;
-
-        bar.innerHTML = '';
-        for (let i = 0; i < fitCount; i++) {
-            bar.appendChild(makeTagChip(allTagsCache[i]));
-        }
-        const moreBtn = document.createElement('span');
-        moreBtn.className = 'tag-filter-expand';
-        moreBtn.innerText = '+' + (allTagsCache.length - fitCount);
-        moreBtn.onclick = () => { tagFilterExpanded = true; renderTagFilterBar(); };
-        bar.appendChild(moreBtn);
-        if (activeTagFilters.size > 0) bar.appendChild(makeTagClearBtn());
+    allTagsCache.forEach(t => {
+        bar.appendChild(makeTagChip(t));
     });
+
+    if (activeTagFilters.size > 0) bar.appendChild(makeTagClearBtn());
 }
 
 function makeTagChip(t) {
@@ -2732,7 +2715,7 @@ async function loadDashboard() {
         html += '<div class="dashboard-grid">';
         
         html += '<div class="dash-card"><div class="dash-stat"><div class="dash-stat-number">' + d.total_notes + '</div><div class="dash-stat-label">Notizen gesamt</div></div></div>';
-        html += '<div class="dash-card"><div class="dash-stat"><div class="dash-stat-number">' + d.open_tasks + '</div><div class="dash-stat-label">Offene Aufgaben</div></div></div>';
+        html += '<div class="dash-card" style="cursor:pointer;" onclick="openTodoModal()"><div class="dash-stat"><div class="dash-stat-number">' + d.open_tasks + '</div><div class="dash-stat-label">Offene Aufgaben</div></div></div>';
         
         // Angepinnt
         html += '<div class="dash-card"><h4><i class="icon icon-pin"></i> Angepinnt</h4>';
@@ -2783,11 +2766,15 @@ async function loadDashboard() {
                         `<div style="width:100%; aspect-ratio:1; border-radius:6px; overflow:hidden; border:1px solid var(--border-color); background:rgba(0,0,0,0.2);">` +
                         `<img src="/uploads/${m.filename}" style="width:100%; height:100%; object-fit:cover;"></div>` +
                         `<div style="font-size:0.6em; color:#888; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${dt}</div></div>`;
+                } else if (m.file_type === 'audio') {
+                    html += `<div style="grid-column: 1 / -1; border:1px solid var(--border-color); border-radius:6px; padding:8px; background:rgba(0,0,0,0.2);">` +
+                        `<div style="font-size:0.8em; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="icon icon-mic"></i> ${m.original_name || m.filename}</div>` +
+                        `<audio controls style="width:100%; height:32px;" src="/uploads/${m.filename}"></audio>` +
+                        `<div style="font-size:0.6em; color:#888; margin-top:2px;">${dt}</div></div>`;
                 } else {
-                    const icon = m.file_type === 'audio' ? 'icon-mic' : 'icon-file';
-                    html += `<div style="text-align:center;" title="${m.original_name}\n${dt}">` +
+                    html += `<div style="text-align:center; cursor:pointer;" onclick="window.open('/uploads/${m.filename}', '_blank')" title="${m.original_name}\n${dt}">` +
                         `<div style="width:100%; aspect-ratio:1; border-radius:6px; border:1px solid var(--border-color); background:rgba(0,0,0,0.2); display:flex; align-items:center; justify-content:center;">` +
-                        `<i class="icon ${icon}" style="font-size:1.5em; opacity:0.5;"></i></div>` +
+                        `<i class="icon icon-file" style="font-size:1.5em; opacity:0.5;"></i></div>` +
                         `<div style="font-size:0.6em; color:#888; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${m.original_name || m.filename}</div></div>`;
                 }
             });
