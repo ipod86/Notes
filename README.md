@@ -69,7 +69,7 @@ Das Tool wird über ein interaktives Setup-Skript installiert. Es richtet die Py
 **1. Skript herunterladen und ausführen:**
 
 ```bash
-wget -O setup_notes_sqlite.sh https://raw.githubusercontent.com/ipod86/Notizen/main/setup_notes_sqlite.sh && chmod +x setup_notes_sqlite.sh && sudo ./setup_notes_sqlite.sh
+wget -O setup_notes_sqlite.sh https://raw.githubusercontent.com/ipod86/Notes/main/setup_notes_sqlite.sh && chmod +x setup_notes_sqlite.sh && sudo ./setup_notes_sqlite.sh
 ```
 
 Das Skript fragt interaktiv nach Instanzname, Port und Backup-Optionen.
