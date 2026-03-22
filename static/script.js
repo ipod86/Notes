@@ -2155,6 +2155,20 @@ document.addEventListener('click', () => { closeAllMenus(); });
 
 function exportData() { window.location.href = '/api/export'; }
 
+function copyNoteText() {
+    if (!activeNoteData) return;
+    const text = (activeNoteData.title || '') + '\n\n' + (activeNoteData.text || '');
+    copyText(text.trim());
+    const btn = document.querySelector('[onclick="copyNoteText()"]');
+    if (btn) {
+        const origHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="icon icon-copy"></i> ✓';
+        btn.style.opacity = '1';
+        btn.style.color = 'var(--accent)';
+        setTimeout(() => { btn.innerHTML = origHTML; btn.style.color = ''; btn.style.opacity = '0.5'; }, 1500);
+    }
+}
+
 function toggleSidebar() { const h = document.body.classList.toggle('sidebar-hidden'); localStorage.setItem('sidebarState', h ? 'closed' : 'open'); document.querySelector('#mobile-toggle-btn span').innerText = h ? '▶' : '◀'; }
 
 async function uploadImage() { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.onchange = async (e) => { const file = e.target.files[0]; if (!file) return; uploadWithProgress(file, (data) => { if(data.filename) { wrapSelection(`[img:${data.filename}]`, '', ''); } }); }; input.click(); }
