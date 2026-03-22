@@ -88,3 +88,5 @@ Dann Option `[2]` wählen. Alle Instanzen werden aktualisiert, die Datenbank und
 * **[SortableJS](https://sortablejs.github.io/Sortable/):** Drag-and-Drop-Funktionalität für die Strukturierung des Notizbaums.
 * **[Highlight.js](https://highlightjs.org/):** Syntax-Highlighting für Code-Blöcke innerhalb der Notizen.
 * **[Material Design Icons](https://pictogrammers.com/library/mdi/):** Die in der Benutzeroberfläche verwendeten SVG-Icons entstammen der Pictogrammers-Bibliothek.
+
+<!-- Last updated via Claude Code: 2026-03-22 -->
