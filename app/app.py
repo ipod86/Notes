@@ -73,6 +73,11 @@ def init_db():
             conn.execute('ALTER TABLE notes ADD COLUMN share_id TEXT')
         except sqlite3.OperationalError:
             pass
+
+        try:
+            conn.execute('ALTER TABLE notes ADD COLUMN modified_at REAL')
+        except sqlite3.OperationalError:
+            pass
             
         conn.execute('''
             CREATE TABLE IF NOT EXISTS note_history (
@@ -431,8 +436,8 @@ def restore_history(note_id, history_id):
 def create_note():
     data = request.json
     with get_db() as conn:
-        conn.execute('''INSERT INTO notes (id, parent_id, sort_order, title, text) VALUES (?, ?, ?, ?, ?)''', 
-                     (data['id'], data.get('parent_id'), data.get('sort_order', 999), data.get('title', 'Neu'), data.get('text', '')))
+        conn.execute('''INSERT INTO notes (id, parent_id, sort_order, title, text, modified_at) VALUES (?, ?, ?, ?, ?, ?)''', 
+                     (data['id'], data.get('parent_id'), data.get('sort_order', 999), data.get('title', 'Neu'), data.get('text', ''), time.time()))
     return jsonify({"status": "success", "id": data['id']})
 
 @app.route('/api/notes/<note_id>', methods=['PUT'])
@@ -460,7 +465,7 @@ def update_note(note_id):
                     conn.execute("INSERT INTO note_history (note_id, title, text, saved_at) VALUES (?, ?, ?, ?)",
                                  (note_id, old_title, old_text, now))
 
-        conn.execute('''UPDATE notes SET title=?, text=?, reminder=? WHERE id=?''', (data.get('title'), data.get('text'), data.get('reminder'), note_id))
+        conn.execute('''UPDATE notes SET title=?, text=?, reminder=?, modified_at=? WHERE id=?''', (data.get('title'), data.get('text'), data.get('reminder'), time.time(), note_id))
     return jsonify({"status": "success"})
 
 @app.route('/api/notes/<note_id>', methods=['DELETE'])
@@ -977,7 +982,7 @@ def delete_template(template_id):
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard():
     with get_db() as conn:
-        recent = conn.execute("SELECT id, title FROM notes WHERE is_trashed=0 ORDER BY rowid DESC LIMIT 8").fetchall()
+        recent = conn.execute("SELECT id, title FROM notes WHERE is_trashed=0 ORDER BY COALESCE(modified_at, 0) DESC LIMIT 8").fetchall()
         pinned = conn.execute("SELECT id, title FROM notes WHERE is_trashed=0 AND is_pinned=1 ORDER BY title").fetchall()
         
         upcoming = []
