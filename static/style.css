@@ -98,6 +98,7 @@ body {
 .icon-tag { -webkit-mask-image: url('/static/icons/tag.svg'); mask-image: url('/static/icons/tag.svg'); }
 .icon-printer { -webkit-mask-image: url('/static/icons/printer.svg'); mask-image: url('/static/icons/printer.svg'); }
 .icon-kanban { -webkit-mask-image: url('/static/icons/view-column.svg'); mask-image: url('/static/icons/view-column.svg'); }
+.icon-copy { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z'/%3E%3C/svg%3E"); }
 
 #sidebar { 
     width: var(--sidebar-width); 
