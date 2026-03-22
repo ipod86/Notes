@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 import json
 import os, signal
 import uuid
@@ -9,24 +10,67 @@ import time
 import base64
 import requests
 import urllib.parse
+import ipaddress
 import threading
 import sqlite3
 import tempfile
 import shutil
 import re
+import logging
 from datetime import datetime
 
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
+
+# Trust exactly one upstream proxy (e.g. nginx/Cloudflare).
+# Set BEHIND_PROXY=0 in the systemd service if running without a reverse proxy.
+if os.environ.get('BEHIND_PROXY', '1') != '0':
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 SECRET_FILE = 'secret.key'
 if not os.path.exists(SECRET_FILE):
     with open(SECRET_FILE, 'wb') as f:
-        f.write(os.urandom(24))
-        
+        f.write(os.urandom(32))
+
 with open(SECRET_FILE, 'rb') as f:
     app.secret_key = f.read()
 
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+# Enable SECURE flag when served over HTTPS (set HTTPS=true in systemd service env)
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('HTTPS', 'false').lower() == 'true'
+
+# ---------------------------------------------------------------------------
+# File-upload whitelist
+# To add new types: add the extension (lowercase, without dot) to the set below.
+# See FAQ in README.md for details.
+# ---------------------------------------------------------------------------
+ALLOWED_EXTENSIONS = {
+    # Images
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico',
+    'tiff', 'tif', 'avif', 'heic', 'heif',
+    # Audio
+    'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma', 'aiff',
+    # Video
+    'mp4', 'webm', 'mov', 'avi', 'mkv', 'ogv', 'm4v', '3gp',
+    # Documents
+    'pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    'odt', 'ods', 'odp', 'rtf', 'csv',
+    # Archives
+    'zip', 'tar', 'gz', '7z', 'rar', 'bz2',
+    # Structured text / code
+    'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'log', 'sql',
+    # Calendar / contacts
+    'ics', 'vcf',
+}
+
+ALLOWED_IMAGE_EXTENSIONS = {
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+    'tiff', 'tif', 'avif', 'heic', 'heif',
+}
 
 DB_FILE = 'data.db'
 UPLOAD_FOLDER = 'uploads'
@@ -196,6 +240,31 @@ def init_db():
             END;
         ''')
 
+def is_safe_webhook_url(url):
+    """Reject URLs that point to localhost or private networks (SSRF protection)."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # Block well-known local names
+        if hostname.lower() in ('localhost', 'localhost.localdomain', '0.0.0.0', ''):
+            return False
+        # Block if the hostname is already an IP address in a private/reserved range
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_unspecified or ip.is_multicast):
+                return False
+        except ValueError:
+            pass  # Not an IP address — hostname-based URLs are allowed
+        return True
+    except Exception:
+        return False
+
+
 def send_webhook(title, time_str):
     try:
         with get_db() as conn:
@@ -209,11 +278,11 @@ def send_webhook(title, time_str):
                 method = method_r['value'] if method_r else 'GET'
                 payload = payload_r['value'] if payload_r else ''
                 
-                if url:
+                if url and is_safe_webhook_url(url):
                     su = urllib.parse.quote(title)
                     st = urllib.parse.quote(time_str)
                     final_url = url.replace('{{TITLE}}', su).replace('{{TIME}}', st)
-                    
+
                     if method == 'GET':
                         requests.get(final_url, timeout=5)
                     else:
@@ -258,12 +327,50 @@ os.makedirs(os.path.join(UPLOAD_FOLDER, 'contacts'), exist_ok=True)
 threading.Thread(target=webhook_worker, daemon=True).start()
 
 @app.after_request
-def add_header(response):
+def add_security_headers(response):
+    # Cache control
     if request.path.startswith('/uploads/') or request.path.startswith('/api/download/'):
         response.headers['Cache-Control'] = 'public, max-age=31536000'
-        return response
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    else:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=(self)'
+
+    # Content-Security-Policy
+    # unsafe-inline is required for inline styles/scripts used by the existing frontend.
+    # If you remove inline JS/CSS in the future you can tighten this.
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "media-src 'self' blob:; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "frame-ancestors 'self';"
+    )
+    response.headers['Content-Security-Policy'] = csp
+
+    # HSTS — only sent over HTTPS
+    if request.is_secure:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
     return response
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Return generic error messages — never leak stack traces to the client."""
+    logger.exception("Unhandled exception: %s", e)
+    code = getattr(e, 'code', 500)
+    if isinstance(code, int) and 400 <= code < 500:
+        return jsonify({"error": str(e)}), code
+    return jsonify({"error": "Interner Serverfehler"}), 500
 
 def get_settings():
     with get_db() as conn:
@@ -293,7 +400,8 @@ def login():
     if not sets.get('password_enabled'): 
         return redirect(url_for('index'))
     
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    # ProxyFix middleware has already resolved the real client IP into remote_addr.
+    client_ip = request.remote_addr or '0.0.0.0'
     now = time.time()
     
     if client_ip not in failed_attempts:
@@ -629,7 +737,10 @@ def test_webhook():
     method = data.get('method', 'GET')
     payload = data.get('payload', '')
 
-    if not url: return jsonify({"error": "Keine Ziel-URL angegeben."}), 400
+    if not url:
+        return jsonify({"error": "Keine Ziel-URL angegeben."}), 400
+    if not is_safe_webhook_url(url):
+        return jsonify({"error": "Die URL ist nicht erlaubt. Nur öffentliche http/https-URLs sind zulässig."}), 400
 
     title = "TEST-ERINNERUNG"
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -701,21 +812,29 @@ def download_file(filename):
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     file = request.files.get('file') or request.files.get('image')
-    if file:
-        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        file.save(os.path.join(UPLOAD_FOLDER, filename))
-        
-        file_type = 'file'
-        if file.mimetype.startswith('image/'): file_type = 'image'
-        elif file.mimetype.startswith('audio/'): file_type = 'audio'
-        
-        with get_db() as conn:
-            conn.execute("INSERT INTO media (id, original_name, filename, file_type, uploaded_at) VALUES (?, ?, ?, ?, ?)",
-                         (uuid.uuid4().hex, file.filename, filename, file_type, time.time()))
-                         
-        return jsonify({"filename": filename, "original": file.filename})
-    return jsonify({"error": "error"}), 400
+    if not file:
+        return jsonify({"error": "Keine Datei angegeben"}), 400
+
+    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": f"Dateityp '.{ext}' ist nicht erlaubt. Erlaubte Typen: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}), 400
+
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    file.save(os.path.join(UPLOAD_FOLDER, filename))
+
+    file_type = 'file'
+    if ext in ALLOWED_IMAGE_EXTENSIONS:
+        file_type = 'image'
+    elif ext in {'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'wma', 'aiff'}:
+        file_type = 'audio'
+    elif ext in {'mp4', 'webm', 'mov', 'avi', 'mkv', 'ogv', 'm4v', '3gp'}:
+        file_type = 'video'
+
+    with get_db() as conn:
+        conn.execute("INSERT INTO media (id, original_name, filename, file_type, uploaded_at) VALUES (?, ?, ?, ?, ?)",
+                     (uuid.uuid4().hex, file.filename, filename, file_type, time.time()))
+
+    return jsonify({"filename": filename, "original": file.filename})
 
 @app.route('/api/sketch', methods=['POST'])
 def save_sketch():
@@ -859,8 +978,11 @@ def upload_contact_image(contact_id):
     file = request.files.get('image')
     if not file:
         return jsonify({"error": "no file"}), 400
-    
-    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'png'
+
+    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return jsonify({"error": f"Dateityp '.{ext}' ist für Kontaktbilder nicht erlaubt. Erlaubt: {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}"}), 400
+
     filename = f"{contact_id}.{ext}"
     
     os.makedirs(os.path.join(UPLOAD_FOLDER, 'contacts'), exist_ok=True)
@@ -1071,9 +1193,15 @@ def restore_backup():
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
-                with tarfile.open(tar_path, 'r:gz') as tar: 
+                with tarfile.open(tar_path, 'r:gz') as tar:
+                    # Path-traversal protection: reject any member with absolute
+                    # paths or '..' components before extracting.
+                    for member in tar.getmembers():
+                        member_path = os.path.normpath(member.name)
+                        if member_path.startswith('/') or member_path.startswith('..'):
+                            return jsonify({"error": "Backup-Archiv enthält ungültige Pfade und wurde abgelehnt"}), 400
                     tar.extractall(path=tmpdir)
-            except: 
+            except tarfile.TarError:
                 return jsonify({"error": "Datei ist kein gültiges tar.gz Archiv"}), 400
             
             db_path = os.path.join(tmpdir, 'data.db')
@@ -1088,8 +1216,8 @@ def restore_backup():
                 conn.close()
                 if res[0] != "ok": 
                     return jsonify({"error": "Die Datenbank im Backup ist korrupt"}), 400
-            except Exception as e: 
-                return jsonify({"error": f"Datenbank-Prüfung fehlgeschlagen: {str(e)}"}), 400
+            except Exception:
+                return jsonify({"error": "Datenbank-Prüfung fehlgeschlagen"}), 400
             
             if os.path.exists(DB_FILE): 
                 shutil.copy2(DB_FILE, DB_FILE + '.pre-restore')
@@ -1121,10 +1249,11 @@ def restore_backup():
         threading.Thread(target=restart_app, daemon=True).start()
         return jsonify({"status": "success"})
         
-    except Exception as e: 
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logger.exception("Fehler beim Restore")
+        return jsonify({"error": "Interner Fehler beim Wiederherstellen des Backups"}), 500
     finally:
-        if file and tar_path and os.path.exists(tar_path): 
+        if file and tar_path and os.path.exists(tar_path):
             os.remove(tar_path)
 
 if __name__ == '__main__':

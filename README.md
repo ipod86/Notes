@@ -58,6 +58,42 @@ Das Notiz-Tool bietet eine Vielzahl an Funktionen, die es zu einer vollwertigen,
 * **Dark & Light Mode:** Theme jederzeit umschaltbar über die Einstellungen.
 * **Akzentfarbe:** Frei wählbare Akzentfarbe für die gesamte Benutzeroberfläche.
 
+## 🔒 Sicherheit für den Online-Betrieb
+
+Das Tool ist für den öffentlichen Internet-Betrieb gehärtet. Folgende Maßnahmen sind bereits eingebaut:
+
+| Maßnahme | Details |
+|---|---|
+| **Security Headers** | `X-Frame-Options`, `X-Content-Type-Options`, `CSP`, `Referrer-Policy`, `HSTS` (bei HTTPS) |
+| **Session-Cookies** | `HttpOnly`, `SameSite=Strict`, optional `Secure` (bei HTTPS) |
+| **Brute-Force-Schutz** | IP-Sperre nach 5 Fehlversuchen, 5 min Sperrzeit |
+| **SSRF-Schutz** | Webhook-URLs werden gegen private/lokale IP-Ranges geprüft |
+| **Upload-Whitelist** | Nur explizit erlaubte Dateitypen werden akzeptiert (siehe FAQ) |
+| **Path-Traversal-Schutz** | Backup-Archive werden auf unsichere Pfade geprüft |
+| **XSS-Schutz** | DOMPurify sanitisiert alle geteilten Notizen vor dem Rendern |
+| **Fehler-Handling** | Keine Stack-Traces im HTTP-Response — Fehler nur im Server-Log |
+| **Proxy-Unterstützung** | ProxyFix für korrektes IP-Handling hinter nginx/Cloudflare |
+
+### Empfohlene Produktionsumgebung
+
+Für den Betrieb im Internet wird empfohlen:
+- **Reverse Proxy** (nginx oder Caddy) mit HTTPS/TLS davor schalten
+- **Passwortschutz** in den App-Einstellungen aktivieren
+- Env-Variable `HTTPS=true` im systemd-Service setzen (aktiviert `Secure`-Flag auf Session-Cookies)
+
+```ini
+# In /etc/systemd/system/notizen-INSTANZ.service unter [Service]:
+Environment="HTTPS=true"
+```
+
+Wenn **kein** Reverse Proxy vorgeschaltet ist, sollte der ProxyFix deaktiviert werden:
+
+```ini
+Environment="BEHIND_PROXY=0"
+```
+
+---
+
 ## 🚀 Installation
 
 Das Tool wird über ein interaktives Setup-Skript installiert. Es richtet die Python-Umgebung (Flask), alle Verzeichnisse, die SQLite-Datenbank sowie die systemd-Services und Cronjobs automatisch ein.
@@ -82,11 +118,65 @@ sudo ./setup_notes_sqlite.sh
 
 Dann Option `[2]` wählen. Alle Instanzen werden aktualisiert, die Datenbank und Uploads bleiben erhalten.
 
+## ❓ FAQ
+
+### Welche Dateitypen kann ich hochladen?
+
+Es ist eine umfangreiche Whitelist erlaubter Dateitypen eingebaut. Standardmäßig sind folgende Typen erlaubt:
+
+| Kategorie | Erlaubte Endungen |
+|---|---|
+| **Bilder** | jpg, jpeg, png, gif, webp, svg, bmp, ico, tiff, tif, avif, heic, heif |
+| **Audio** | mp3, wav, ogg, m4a, flac, aac, opus, wma, aiff |
+| **Video** | mp4, webm, mov, avi, mkv, ogv, m4v, 3gp |
+| **Dokumente** | pdf, txt, md, doc, docx, xls, xlsx, ppt, pptx, odt, ods, odp, rtf, csv |
+| **Archive** | zip, tar, gz, 7z, rar, bz2 |
+| **Strukturierter Text / Code** | json, xml, yaml, yml, toml, ini, cfg, conf, log, sql |
+| **Kalender / Kontakte** | ics, vcf |
+
+### Wie kann ich einen neuen Dateityp hinzufügen?
+
+Öffne die Datei `app/app.py` und suche die Konstante `ALLOWED_EXTENSIONS` (ganz oben in der Datei, nach den Imports). Füge dort die gewünschte Dateiendung in **Kleinbuchstaben ohne Punkt** hinzu:
+
+```python
+ALLOWED_EXTENSIONS = {
+    # Images
+    'jpg', 'jpeg', 'png', ...
+    # Mein neuer Typ
+    'stl',   # <-- einfach hinzufügen
+}
+```
+
+Anschließend das Update einspielen:
+
+```bash
+sudo ./setup_notes_sqlite.sh  # Option [2] wählen
+```
+
+> **Wichtig:** Füge niemals ausführbare Dateitypen hinzu (z. B. `py`, `sh`, `php`, `exe`, `js`, `html`). Diese könnten bei einer Fehlkonfiguration des Webservers serverseitig ausgeführt werden und ein erhebliches Sicherheitsrisiko darstellen.
+
+### Warum werden manche Dateinamen nach dem Upload umbenannt?
+
+Aus Sicherheitsgründen wird jeder Upload unter einem zufälligen UUID-Dateinamen gespeichert. Der Originalname ist in der Datenbank hinterlegt und wird beim Download wiederhergestellt. Das verhindert Path-Traversal-Angriffe durch präparierte Dateinamen.
+
+### Wie aktiviere ich HTTPS / sichere Cookies?
+
+Das Tool selbst liefert kein HTTPS. Empfohlen wird ein Reverse Proxy davor (z. B. nginx mit Certbot oder Caddy). Sobald HTTPS aktiv ist, trage in der systemd-Service-Datei ein:
+
+```ini
+Environment="HTTPS=true"
+```
+
+Damit wird das `Secure`-Flag auf dem Session-Cookie gesetzt, sodass er nicht über unverschlüsselte Verbindungen übertragen werden kann.
+
+---
+
 ## 📖 Verwendete Open-Source-Bibliotheken & Ressourcen
 
 * **[Flask](https://flask.palletsprojects.com/) & [SQLite](https://www.sqlite.org/):** Web-Framework für das Python-Backend und lokale relationale Datenbank.
 * **[SortableJS](https://sortablejs.github.io/Sortable/):** Drag-and-Drop-Funktionalität für die Strukturierung des Notizbaums.
 * **[Highlight.js](https://highlightjs.org/):** Syntax-Highlighting für Code-Blöcke innerhalb der Notizen.
 * **[Material Design Icons](https://pictogrammers.com/library/mdi/):** Die in der Benutzeroberfläche verwendeten SVG-Icons entstammen der Pictogrammers-Bibliothek.
+* **[DOMPurify](https://github.com/cure53/DOMPurify):** XSS-Sanitizer für geteilte Notizen in der Share-Ansicht.
 
 <!-- Last updated via Claude Code: 2026-03-22 -->

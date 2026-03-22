@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/static/style.css?v={{ v }}">
     <link rel="stylesheet" href="/static/lib/highlight/tomorrow-night-blue.min.css">
     <script src="/static/lib/highlight/highlight.min.js"></script>
+    <script src="/static/lib/purify.min.js"></script>
 </head>
 <body data-theme="{{ theme }}">
     <script>
@@ -33,7 +34,16 @@
     <script>
         const rawB64 = "{{ text_b64 }}";
         const rawText = decodeURIComponent(escape(window.atob(rawB64)));
-        document.getElementById('display-area').innerHTML = renderMarkdown(rawText);
+        const renderedHtml = renderMarkdown(rawText);
+        // Sanitize with DOMPurify before injecting into the DOM
+        const cleanHtml = (typeof DOMPurify !== 'undefined')
+            ? DOMPurify.sanitize(renderedHtml, {
+                  ADD_TAGS: ['mark'],
+                  ADD_ATTR: ['target', 'rel'],
+                  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'],
+              })
+            : renderedHtml;
+        document.getElementById('display-area').innerHTML = cleanHtml;
     </script>
 </body>
 </html>
